@@ -1,7 +1,7 @@
 import { createTRPCRouter, publicProcedure } from "../trpc";
 
 export const testRouter = createTRPCRouter({
-  all: publicProcedure.query(async ({ ctx }) => {
+  all: publicProcedure.query(() => {
     // const tenant = "baerlis";
     // return ctx.db
     //   .select(
