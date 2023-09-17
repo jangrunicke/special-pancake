@@ -1,10 +1,6 @@
 import { Suspense } from "react";
 
-import {
-  CreatePostForm,
-  PostCardSkeleton,
-  PostList,
-} from "./_components/posts";
+import { TestList } from "./_components/test";
 
 export const runtime = "edge";
 
@@ -16,18 +12,11 @@ export default function HomePage() {
           Create <span className="text-pink-400">T3</span> Turbo
         </h1>
 
-        <CreatePostForm />
         <div className="h-[40vh] w-full max-w-2xl overflow-y-scroll">
           <Suspense
-            fallback={
-              <div className="flex w-full flex-col gap-4">
-                <PostCardSkeleton />
-                <PostCardSkeleton />
-                <PostCardSkeleton />
-              </div>
-            }
+            fallback={<div className="flex w-full flex-col gap-4">Loading</div>}
           >
-            <PostList />
+            <TestList />
           </Suspense>
         </div>
       </div>

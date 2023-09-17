@@ -1,9 +1,10 @@
 "use client";
 
+import { api } from "~/utils/api";
 import type { RouterOutputs } from "~/utils/api";
 
 export const TestList = () => {
-  // const [tests] = api.test.all.useSuspenseQuery();
+  const [tests] = api.test.all.useSuspenseQuery();
 
   // if (tests.length === 0) {
   //   return <div>No tests</div>;
@@ -11,10 +12,9 @@ export const TestList = () => {
 
   return (
     <div className="flex w-full flex-col gap-4">
-      {/* {tests.map((t) => {
+      {tests.map((t) => {
         return <TestCard key={t.id} test={t} />;
-      })} */}
-      TestList goes here
+      })}
     </div>
   );
 };
@@ -31,17 +31,6 @@ export function TestCard(props: {
         <h2 className="text-2xl font-bold text-pink-400">{props.test.id}</h2>
         <p className="mt-2 text-sm">{props.test.name}</p>
       </div>
-      {/* <div>
-        <button
-          className="cursor-pointer text-sm font-bold uppercase text-pink-400"
-          onClick={async () => {
-            await deletetest.mutateAsync(props.test.id);
-            await context.test.all.invalidate();
-          }}
-        >
-          Delete
-        </button>
-      </div> */}
     </div>
   );
 }

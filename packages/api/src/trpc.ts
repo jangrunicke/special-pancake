@@ -6,13 +6,13 @@
  * tl;dr - this is where all the tRPC server stuff is created and plugged in.
  * The pieces you will need to use are documented accordingly near the end
  */
+import type { NextRequest } from "next/server";
 import { initTRPC, TRPCError } from "@trpc/server";
-import superjson from "superjson";
 import { ZodError } from "zod";
 
-import { auth } from "@acme/auth";
-import type { Session } from "@acme/auth";
 import { db } from "@acme/db";
+
+import { transformer } from "./transformer";
 
 /**
  * 1. CONTEXT
@@ -24,7 +24,8 @@ import { db } from "@acme/db";
  *
  */
 interface CreateContextOptions {
-  session: Session | null;
+  apiKey?: string | null;
+  req?: NextRequest;
 }
 
 /**
@@ -36,9 +37,9 @@ interface CreateContextOptions {
  * - trpc's `createSSGHelpers` where we don't have req/res
  * @see https://create.t3.gg/en/usage/trpc#-servertrpccontextts
  */
-const createInnerTRPCContext = (opts: CreateContextOptions) => {
+export const createInnerTRPCContext = (opts: CreateContextOptions) => {
   return {
-    session: opts.session,
+    ...opts,
     db,
   };
 };
@@ -48,17 +49,9 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
  * process every request that goes through your tRPC endpoint
  * @link https://trpc.io/docs/context
  */
-export const createTRPCContext = async (opts: {
-  req?: Request;
-  auth?: Session;
-}) => {
-  const session = opts.auth ?? (await auth());
-  const source = opts.req?.headers.get("x-trpc-source") ?? "unknown";
-
-  console.log(">>> tRPC Request from", source, "by", session?.user);
-
+export const createTRPCContext = (opts: { req: NextRequest }) => {
   return createInnerTRPCContext({
-    session,
+    req: opts.req,
   });
 };
 
@@ -68,8 +61,8 @@ export const createTRPCContext = async (opts: {
  * This is where the trpc api is initialized, connecting the context and
  * transformer
  */
-const t = initTRPC.context<typeof createTRPCContext>().create({
-  transformer: superjson,
+export const t = initTRPC.context<typeof createTRPCContext>().create({
+  transformer,
   errorFormatter({ shape, error }) {
     return {
       ...shape,
@@ -94,6 +87,7 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
  * @see https://trpc.io/docs/router
  */
 export const createTRPCRouter = t.router;
+export const mergeRouters = t.mergeRouters;
 
 /**
  * Public (unauthed) procedure
@@ -108,18 +102,104 @@ export const publicProcedure = t.procedure;
  * Reusable middleware that enforces users are logged in before running the
  * procedure
  */
-const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
-  }
-  return next({
-    ctx: {
-      // infers the `session` as non-nullable
-      session: { ...ctx.session, user: ctx.session.user },
-    },
+// const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
+//   if (!ctx.auth?.userId) {
+//     throw new TRPCError({ code: "UNAUTHORIZED" });
+//   }
+//   return next({
+//     ctx: {
+//       auth: {
+//         ...ctx.auth,
+//         userId: ctx.auth.userId,
+//       },
+//     },
+//   });
+// });
+
+// const enforceUserInOrg = enforceUserIsAuthed.unstable_pipe(
+//   async ({ ctx, next }) => {
+//     if (!ctx.auth.orgId) {
+//       throw new TRPCError({
+//         code: "UNAUTHORIZED",
+//         message: "You must be in an organization to perform this action",
+//       });
+//     }
+
+//     return next({
+//       ctx: {
+//         auth: {
+//           ...ctx.auth,
+//           orgId: ctx.auth.orgId,
+//         },
+//       },
+//     });
+//   },
+// );
+
+// const enforceUserIsAdmin = enforceUserInOrg.unstable_pipe(
+//   async ({ ctx, next }) => {
+//     if (ctx.auth.orgRole !== "admin") {
+//       throw new TRPCError({
+//         code: "UNAUTHORIZED",
+//         message: "You must be an admin to perform this action",
+//       });
+//     }
+
+//     return next({
+//       ctx: {
+//         auth: {
+//           ...ctx.auth,
+//           orgRole: ctx.auth.orgRole,
+//         },
+//       },
+//     });
+//   },
+// );
+
+/**
+ * Middleware to authenticate API requests with an API key
+ */
+// const enforceApiKey = t.middleware(async ({ ctx, next }) => {
+//   if (!ctx.apiKey) {
+//     throw new TRPCError({ code: "UNAUTHORIZED" });
+//   }
+
+//   // Check db for API key
+//   const apiKey = await ctx.db
+//     .selectFrom("ApiKey")
+//     .select(["id", "key", "projectId"])
+//     .where("ApiKey.key", "=", ctx.apiKey)
+//     .where("revokedAt", "is", null)
+//     .executeTakeFirst();
+
+//   if (!apiKey) {
+//     throw new TRPCError({ code: "UNAUTHORIZED" });
+//   }
+
+//   void ctx.db
+//     .updateTable("ApiKey")
+//     .set({ lastUsed: new Date() })
+//     .where("id", "=", apiKey.id)
+//     .execute();
+
+//   return next({
+//     ctx: {
+//       apiKey,
+//     },
+//   });
+// });
+
+/**
+ * Middleware to parse form data and put it in the rawInput
+ */
+export const formdataMiddleware = t.middleware(async (opts) => {
+  const formData = await opts.ctx.req?.formData?.();
+  if (!formData) throw new TRPCError({ code: "BAD_REQUEST" });
+
+  return opts.next({
+    rawInput: formData,
   });
 });
-
 /**
  * Protected (authed) procedure
  *
@@ -129,4 +209,11 @@ const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
  *
  * @see https://trpc.io/docs/procedures
  */
-export const protectedProcedure = t.procedure.use(enforceUserIsAuthed);
+// export const protectedProcedure = t.procedure.use(enforceUserIsAuthed);
+// export const protectedOrgProcedure = t.procedure.use(enforceUserInOrg);
+// export const protectedAdminProcedure = t.procedure.use(enforceUserIsAdmin);
+
+// export const protectedApiProcedure = t.procedure.use(enforceApiKey);
+// export const protectedApiFormDataProcedure = t.procedure
+//   .use(formdataMiddleware)
+//   .use(enforceApiKey);
