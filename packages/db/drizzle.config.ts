@@ -15,5 +15,5 @@ export default {
   dbCredentials: {
     connectionString: process.env.DATABASE_URL,
   },
-  // schemaFilter: ["public", "baerlis"]
+  schemaFilter: ["public", "tenant_a", "tenant_b"],
 } satisfies Config;
